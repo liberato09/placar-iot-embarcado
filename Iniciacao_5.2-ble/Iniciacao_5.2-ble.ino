@@ -1,8 +1,8 @@
 #include <LedControl.h>
 #include <OneWire.h>
 #include <DallasTemperature.h>
-//#include <WiFi.h>
-//#include <PubSubClient.h>
+#include <WiFi.h>
+#include <PubSubClient.h>
 #include <BLEDevice.h>
 #include <BLEServer.h>
 #include <BLEUtils.h>
@@ -34,9 +34,10 @@ const char* Topico13 = "Inicio";
 const char* Topico14 = "Zera";
 const char* Topico15 = "Sacador";
 const char* Topico16 = "Inte";
+const char* Topico17 = "wifi";
 
-//WiFiClient espClient;
-//PubSubClient client(espClient);
+WiFiClient espClient;
+PubSubClient client(espClient);
 
 #define DEBUG
 #define ONE_WIRE_BUS 4
@@ -48,6 +49,22 @@ OneWire oneWire(ONE_WIRE_BUS);
 DallasTemperature sensors(&oneWire);
 DeviceAddress sensor1 = { 0x28, 0x4C, 0xE3, 0x70, 0x9, 0x0, 0x0, 0xA4 };
 LedControl lc = LedControl(23, 18, 15, 1);
+
+//Variáveis que indicam o núcleo
+static uint8_t Nucleo_Zero = 0;
+static uint8_t Nucleo_Um  = 1;
+
+//Variáveis compartilhadas pelos núcleos
+int Score_A = 0, Set1_A = 0, Set2_A = 0, Set3_A = 0; //Jogador A
+int Score_B = 0, Set1_B = 0, Set2_B = 0, Set3_B = 0; //Jogador B
+int Horas = 0, Minutos = 0, Segundos = 0, Inicio = 0, Zera = 0; // Contagem de tempo
+int Sacador = 0;
+int Inte = 15; // Intensidade dos displays 0~15
+
+//Variáveis locais
+int i = 0, z = 1, caso = 0, w = 0, p = 0, wifi = 0;
+float passaTemp;
+float by = 0;
 
 class MyServerCallbacks: public BLEServerCallbacks {
     void onConnect(BLEServer* pServer) {
@@ -66,31 +83,15 @@ class MyCallbacks: public BLECharacteristicCallbacks {
         // Do stuff based on the command received from the app
         if (rxValue.find("A") != -1) {
           digitalWrite(5, HIGH);
+          wifi = 1;
         }
         else if (rxValue.find("B") != -1) {
           digitalWrite(5, LOW);
+          wifi = 0;
         }
       }
     }
 };
-
-
-//Variáveis que indicam o núcleo
-static uint8_t Nucleo_Zero = 0;
-static uint8_t Nucleo_Um  = 1;
-
-//Variáveis compartilhadas pelos núcleos
-int Score_A = 0, Set1_A = 0, Set2_A = 0, Set3_A = 0; //Jogador A
-int Score_B = 0, Set1_B = 0, Set2_B = 0, Set3_B = 0; //Jogador B
-int Horas = 0, Minutos = 0, Segundos = 0, Inicio = 0, Zera = 0; // Contagem de tempo
-int Sacador = 0;
-int Inte = 15; // Intensidade dos displays 0~15
-
-//Variáveis locais
-int i = 0, z = 1, caso = 0;
-float passaTemp;
-float by = 0;
-
 void setup() {
   lc.shutdown(0, false);
   lc.clearDisplay(0);
@@ -99,11 +100,10 @@ void setup() {
   lc.shutdown(2, false);
   lc.clearDisplay(2);
   sensors.begin();
-  //Serial.begin(115200);
   pinMode(5, OUTPUT);
   pinMode(21, OUTPUT);
   pinMode(22, OUTPUT);
-  /*client.subscribe(Topico1);
+  client.subscribe(Topico1);
   client.subscribe(Topico2);
   client.subscribe(Topico3);
   client.subscribe(Topico4);
@@ -118,7 +118,9 @@ void setup() {
   client.subscribe(Topico13);
   client.subscribe(Topico14);
   client.subscribe(Topico15);
-  client.setCallback(callback);*/
+  client.subscribe(Topico16);
+  client.subscribe(Topico17);
+  client.setCallback(callback);
   xTaskCreatePinnedToCore(Tempo_Jogo, "Tempo", 1000, NULL, 3, NULL, Nucleo_Zero);
   xTaskCreatePinnedToCore(Jogador_A, "Jogador_A", 1000, NULL, 2, NULL, Nucleo_Zero);
   xTaskCreatePinnedToCore(Jogador_B, "Jogador_B", 1000, NULL, 2, NULL, Nucleo_Zero);
@@ -329,8 +331,11 @@ void Tempo_Jogo(void* pvParameters) {
     }
   }
 }
-/*void MQTT(void) {
-  deviceConnected = false;
+void MQTT() {
+  caso = 0;
+  esp_err_t esp_bluedroid_deinit();
+  esp_err_t esp_bluedroid_disable();
+  btStop();
   if (WiFi.status() != WL_CONNECTED) {
     digitalWrite(22, LOW);
     delay(1000);
@@ -363,26 +368,21 @@ void Tempo_Jogo(void* pvParameters) {
         client.subscribe(Topico14, 1);
         client.subscribe(Topico15, 1);
         client.subscribe(Topico16, 1);
+        client.subscribe(Topico17, 1);
         digitalWrite(22, HIGH);
       }
     }
     z = 1;
   }
-  if (passaTemp != by) {
-    by = passaTemp;
-    i++;
-    if (i == 5) {
-      char b[6];
-      char convertido[16];
-      sprintf(b, "%.1f", by);
-      client.publish(Topico1, b);
-      i = 0;
-    }
-  }
-  delay(100);
+  by = passaTemp;
+  char b[6];
+  char convertido[16];
+  sprintf(b, "%.1f", by);
+  client.publish(Topico1, b);
+  delay(1000);
 }
-*/
-/*void callback(char* topic, byte* payload, unsigned int length) {
+
+void callback(char* topic, byte* payload, unsigned int length) {
   payload[length] = '\0';
   if (strcmp(topic, Topico2) == 0) {
     String Sco_A = String((char*)payload);
@@ -444,12 +444,17 @@ void Tempo_Jogo(void* pvParameters) {
     String Intensidade = String((char*)payload);
     Inte = atoi(Intensidade.c_str());
   }
+   if (strcmp(topic, Topico17) == 0) {
+    String wif = String((char*)payload);
+    wifi = atoi(wif.c_str());
+  }
 }
-*/
+
 void BLE() {
   if (caso == 0) {
+    WiFi.mode(WIFI_OFF);
     // Create the BLE Device
-    BLEDevice::init("ESP32 UART Test"); // Give it a name
+    BLEDevice::init("PLACAR"); // Give it a name
     // Create the BLE Server
     BLEServer *pServer = BLEDevice::createServer();
     pServer->setCallbacks(new MyServerCallbacks());
@@ -489,7 +494,11 @@ void loop() {
   lc.setIntensity(0, Inte);
   lc.setIntensity(1, Inte);
   lc.setIntensity(2, Inte);
-  BLE();
-  //MQTT();
-  //client.loop();
+  if (wifi == 0) {
+    BLE();
+  }
+  else {
+    MQTT();
+    client.loop();
+  }
 }
