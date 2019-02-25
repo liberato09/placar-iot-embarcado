@@ -1,0 +1,7 @@
+*dia 1 (terça)
+	- erro para atualizar node
+	- erro no babel ao iniciar projeto
+	- bastante demorado para instalar/desinstalar dependências
+
+*dia 2 (quarta)
+	- corrigir problema do babel: .env file - SKIP_PREFLIGHT_CHECK=true
